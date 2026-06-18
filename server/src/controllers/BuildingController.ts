@@ -1,0 +1,213 @@
+import { Request, Response, Router } from 'express';
+import { BuildingService } from '../services/BuildingService';
+import type { BuildingUsage, FilterParams, Point, Polygon } from '../types';
+
+export class BuildingController {
+  private buildingService: BuildingService;
+  public router: Router;
+
+  constructor(buildingService?: BuildingService) {
+    this.buildingService = buildingService || new BuildingService();
+    this.router = Router();
+    this.initRoutes();
+  }
+
+  private initRoutes(): void {
+    this.router.get('/', this.getBuildings.bind(this));
+    this.router.get('/within', this.getBuildingsWithin.bind(this));
+    this.router.get('/stats', this.getStats.bind(this));
+    this.router.get('/:id', this.getBuilding.bind(this));
+    this.router.post('/', this.createBuilding.bind(this));
+    this.router.put('/:id', this.updateBuilding.bind(this));
+    this.router.delete('/:id', this.deleteBuilding.bind(this));
+    this.router.post('/validate', this.validateBuilding.bind(this));
+  }
+
+  private getBuildings(req: Request, res: Response): void {
+    const { usage, yearStart, yearEnd, isCoded, hasLocation, minLng, maxLng, minLat, maxLat } = req.query;
+
+    const params: FilterParams = {};
+
+    if (usage) {
+      params.usage = (Array.isArray(usage) ? usage : [usage]) as BuildingUsage[];
+    }
+    if (yearStart !== undefined) {
+      params.yearStart = Number(yearStart);
+    }
+    if (yearEnd !== undefined) {
+      params.yearEnd = Number(yearEnd);
+    }
+    if (isCoded !== undefined) {
+      params.isCoded = isCoded === 'true';
+    }
+    if (hasLocation !== undefined) {
+      params.hasLocation = hasLocation === 'true';
+    }
+    if (minLng !== undefined && maxLng !== undefined && minLat !== undefined && maxLat !== undefined) {
+      params.minLng = Number(minLng);
+      params.maxLng = Number(maxLng);
+      params.minLat = Number(minLat);
+      params.maxLat = Number(maxLat);
+    }
+
+    const buildings = this.buildingService.getBuildings(params);
+
+    res.json({
+      success: true,
+      message: '获取成功',
+      data: buildings
+    });
+  }
+
+  private getBuilding(req: Request, res: Response): void {
+    const { id } = req.params;
+    const result = this.buildingService.getBuildingById(id);
+
+    if (!result) {
+      res.status(404).json({
+        success: false,
+        message: '建筑不存在',
+        data: null
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      message: '获取成功',
+      data: result
+    });
+  }
+
+  private createBuilding(req: Request, res: Response): void {
+    const building = this.buildingService.createBuilding(req.body);
+
+    res.status(201).json({
+      success: true,
+      message: '创建成功',
+      data: building
+    });
+  }
+
+  private updateBuilding(req: Request, res: Response): void {
+    const { id } = req.params;
+    const building = this.buildingService.updateBuilding(id, req.body);
+
+    if (!building) {
+      res.status(404).json({
+        success: false,
+        message: '建筑不存在',
+        data: null
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      message: '更新成功',
+      data: building
+    });
+  }
+
+  private deleteBuilding(req: Request, res: Response): void {
+    const { id } = req.params;
+    const deleted = this.buildingService.deleteBuilding(id);
+
+    if (!deleted) {
+      res.status(404).json({
+        success: false,
+        message: '建筑不存在',
+        data: null
+      });
+      return;
+    }
+
+    res.json({
+      success: true,
+      message: '删除成功',
+      data: null
+    });
+  }
+
+  private getBuildingsWithin(req: Request, res: Response): void {
+    const { minLng, maxLng, minLat, maxLat } = req.query;
+
+    if (minLng === undefined || maxLng === undefined || minLat === undefined || maxLat === undefined) {
+      res.status(400).json({
+        success: false,
+        message: '缺少必要参数: minLng, maxLng, minLat, maxLat',
+        data: null
+      });
+      return;
+    }
+
+    const buildings = this.buildingService.getBuildingsWithinBounds(
+      Number(minLng),
+      Number(maxLng),
+      Number(minLat),
+      Number(maxLat)
+    );
+
+    res.json({
+      success: true,
+      message: '获取成功',
+      data: buildings
+    });
+  }
+
+  private getStats(req: Request, res: Response): void {
+    const { usage, yearStart, yearEnd, isCoded, hasLocation } = req.query;
+
+    const params: FilterParams = {};
+
+    if (usage) {
+      params.usage = (Array.isArray(usage) ? usage : [usage]) as BuildingUsage[];
+    }
+    if (yearStart !== undefined) {
+      params.yearStart = Number(yearStart);
+    }
+    if (yearEnd !== undefined) {
+      params.yearEnd = Number(yearEnd);
+    }
+    if (isCoded !== undefined) {
+      params.isCoded = isCoded === 'true';
+    }
+    if (hasLocation !== undefined) {
+      params.hasLocation = hasLocation === 'true';
+    }
+
+    const stats = this.buildingService.getStats(params);
+
+    res.json({
+      success: true,
+      message: '获取成功',
+      data: stats
+    });
+  }
+
+  private validateBuilding(req: Request, res: Response): void {
+    const { location, outline, parcelId, excludeId } = req.body;
+
+    if (!location || !outline) {
+      res.status(400).json({
+        success: false,
+        message: '缺少必要参数: location, outline',
+        data: null
+      });
+      return;
+    }
+
+    const result = this.buildingService.validateBuilding(
+      location as Point,
+      outline as Polygon,
+      parcelId,
+      excludeId
+    );
+
+    res.json({
+      success: true,
+      message: '验证完成',
+      data: result
+    });
+  }
+}
