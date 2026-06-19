@@ -1,0 +1,21 @@
+"use strict";
+Object.defineProperty(exports, "__esModule", { value: true });
+const express_1 = require("express");
+const BuildingController_1 = require("../controllers/BuildingController");
+const ParcelController_1 = require("../controllers/ParcelController");
+const ProjectController_1 = require("../controllers/ProjectController");
+const StatsController_1 = require("../controllers/StatsController");
+const RedlineController_1 = require("../controllers/RedlineController");
+const buildingController = new BuildingController_1.BuildingController();
+const parcelController = new ParcelController_1.ParcelController();
+const projectController = new ProjectController_1.ProjectController();
+const statsController = new StatsController_1.StatsController();
+const redlineController = new RedlineController_1.RedlineController();
+const router = (0, express_1.Router)();
+router.use("/buildings", buildingController.router);
+router.use("/parcels", parcelController.router);
+router.use("/projects", projectController.router);
+router.use("/stats", statsController.router);
+router.use("/redlines", redlineController.router);
+exports.default = router;
+//# sourceMappingURL=index.js.map
