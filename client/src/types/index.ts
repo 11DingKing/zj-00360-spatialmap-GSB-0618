@@ -1,14 +1,24 @@
-export type BuildingUsage = 'residential' | 'commercial' | 'industrial' | 'public' | 'other';
+export type BuildingUsage =
+  | "residential"
+  | "commercial"
+  | "industrial"
+  | "public"
+  | "other";
 
-export type LifeCycleStage = 'planning' | 'construction' | 'acceptance' | 'registration' | 'cancelled';
+export type LifeCycleStage =
+  | "planning"
+  | "construction"
+  | "acceptance"
+  | "registration"
+  | "cancelled";
 
 export interface Point {
-  type: 'Point';
+  type: "Point";
   coordinates: [number, number];
 }
 
 export interface Polygon {
-  type: 'Polygon';
+  type: "Polygon";
   coordinates: [number, number][][];
 }
 
@@ -86,7 +96,7 @@ export interface StatsResult {
 }
 
 export interface ValidationError {
-  type: 'overlap' | 'outside_parcel' | 'invalid_geometry';
+  type: "overlap" | "outside_parcel" | "invalid_geometry";
   message: string;
   overlappingBuildings?: string[];
 }
@@ -118,4 +128,45 @@ export interface ApiResponse<T> {
   success: boolean;
   message: string;
   data: T;
+}
+
+export type RedlineType =
+  | "ecological"
+  | "historic"
+  | "planning"
+  | "flood"
+  | "other";
+
+export interface Redline {
+  id: string;
+  code: string;
+  name: string;
+  type: RedlineType;
+  boundary: Polygon;
+  description: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface RedlineConflict {
+  buildingId: string;
+  buildingName: string;
+  redlineIds: string[];
+  redlineNames: string[];
+  redlineTypes: RedlineType[];
+}
+
+export interface RedlineConflictSummary {
+  type: RedlineType;
+  redlineCount: number;
+  conflictBuildingCount: number;
+}
+
+export interface AreaAnalysisResult {
+  area: number;
+  buildings: BuildingWithRelations[];
+  parcels: Parcel[];
+  redlines: Redline[];
+  conflicts: RedlineConflict[];
+  conflictSummary: RedlineConflictSummary[];
 }

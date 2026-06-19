@@ -1,4 +1,4 @@
-import { getDb } from './index';
+import { getDb } from "./index";
 
 export function initDatabase(): void {
   const db = getDb();
@@ -62,6 +62,18 @@ export function initDatabase(): void {
       min_y, max_y
     );
 
+    CREATE TABLE IF NOT EXISTS redlines (
+      id TEXT PRIMARY KEY,
+      code TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      type TEXT NOT NULL CHECK (type IN ('ecological', 'historic', 'planning', 'flood', 'other')),
+      boundary TEXT NOT NULL,
+      description TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_redlines_type ON redlines(type);
     CREATE INDEX IF NOT EXISTS idx_buildings_usage ON buildings(usage);
     CREATE INDEX IF NOT EXISTS idx_buildings_year ON buildings(build_year);
     CREATE INDEX IF NOT EXISTS idx_buildings_coded ON buildings(is_coded);
@@ -69,7 +81,7 @@ export function initDatabase(): void {
     CREATE INDEX IF NOT EXISTS idx_lifecycle_building ON life_cycle_records(building_id);
   `);
 
-  console.log('Database initialized successfully.');
+  console.log("Database initialized successfully.");
 }
 
 if (require.main === module) {
