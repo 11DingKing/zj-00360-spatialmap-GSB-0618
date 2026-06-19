@@ -1,14 +1,24 @@
-export type BuildingUsage = 'residential' | 'commercial' | 'industrial' | 'public' | 'other';
+export type BuildingUsage =
+  | "residential"
+  | "commercial"
+  | "industrial"
+  | "public"
+  | "other";
 
-export type LifeCycleStage = 'planning' | 'construction' | 'acceptance' | 'registration' | 'cancelled';
+export type LifeCycleStage =
+  | "planning"
+  | "construction"
+  | "acceptance"
+  | "registration"
+  | "cancelled";
 
 export interface Point {
-  type: 'Point';
+  type: "Point";
   coordinates: [number, number];
 }
 
 export interface Polygon {
-  type: 'Polygon';
+  type: "Polygon";
   coordinates: [number, number][][];
 }
 
@@ -86,7 +96,7 @@ export interface StatsResult {
 }
 
 export interface ValidationError {
-  type: 'overlap' | 'outside_parcel' | 'invalid_geometry';
+  type: "overlap" | "outside_parcel" | "invalid_geometry";
   message: string;
   overlappingBuildings?: string[];
 }
@@ -119,3 +129,64 @@ export interface ApiResponse<T> {
   message: string;
   data: T;
 }
+
+export type RedlineType =
+  | "ecological"
+  | "heritage"
+  | "cultural"
+  | "infrastructure"
+  | "agricultural"
+  | "other";
+
+export interface Redline {
+  id: string;
+  name: string;
+  type: RedlineType;
+  description: string | null;
+  boundary: Polygon;
+  area: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ConflictInfo {
+  redlineId: string;
+  redlineName: string;
+  redlineType: RedlineType;
+}
+
+export interface BuildingWithConflicts extends BuildingWithRelations {
+  hasConflict: boolean;
+  conflicts: ConflictInfo[];
+}
+
+export interface AnalysisResult {
+  buildings: BuildingWithConflicts[];
+  parcels: Parcel[];
+  conflictSummary: {
+    type: RedlineType;
+    typeName: string;
+    count: number;
+  }[];
+  totalBuildings: number;
+  totalConflicts: number;
+  totalParcels: number;
+}
+
+export const REDLINE_TYPE_NAMES: Record<RedlineType, string> = {
+  ecological: "生态红线",
+  heritage: "历史街区保护线",
+  cultural: "文物保护线",
+  infrastructure: "基础设施管控线",
+  agricultural: "永久基本农田",
+  other: "其他管控线",
+};
+
+export const REDLINE_TYPE_COLORS: Record<RedlineType, string> = {
+  ecological: "#EF4444",
+  heritage: "#F59E0B",
+  cultural: "#8B5CF6",
+  infrastructure: "#3B82F6",
+  agricultural: "#10B981",
+  other: "#6B7280",
+};

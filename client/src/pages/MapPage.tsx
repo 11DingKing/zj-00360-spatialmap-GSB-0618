@@ -4,8 +4,61 @@ import Legend from '../components/Map/Legend';
 import FilterPanel from '../components/FilterPanel';
 import BuildingDetail from '../components/BuildingDetail';
 import StatsModal from '../components/StatsModal';
+import RedlineAnalysisPanel from '../components/RedlineAnalysisPanel';
+import RedlineLayer from '../components/Map/RedlineLayer';
 import { useBuildings } from '../context/BuildingContext';
-import type { BuildingWithRelations, StatsResult, ValidationError } from '../types';
+import { redlineApi } from '../services/api';
+import type {
+  BuildingWithRelations,
+  StatsResult,
+  ValidationError,
+  AnalysisResult,
+  Polygon,
+  Redline,
+} from '../types';
+
+interface MapControlsProps {
+  showRedlines: boolean;
+  setShowRedlines: (v: boolean) => void;
+  redlines: Redline[];
+  analysisResult: AnalysisResult | null;
+  selectionPolygon: Polygon | null;
+}
+
+const MapControls: React.FC<MapControlsProps> = ({
+  showRedlines,
+  setShowRedlines,
+  redlines,
+  analysisResult,
+  selectionPolygon,
+}) => {
+  return (
+    <>
+      <Legend />
+      <RedlineLayer
+        redlines={redlines}
+        analysisResult={analysisResult}
+        selectionPolygon={selectionPolygon}
+        showRedlines={showRedlines}
+      />
+
+      <div className="absolute top-4 left-8 z-10 flex items-center space-x-3">
+        <button
+          onClick={() => setShowRedlines(!showRedlines)}
+          className={`px-4 py-2.5 rounded-xl shadow-lg transition-all flex items-center space-x-2 text-sm font-medium ${
+            showRedlines
+              ? 'bg-orange-500 text-white'
+              : 'bg-white text-gray-700 hover:bg-gray-50'
+          }`}
+        >
+          <i className="fas fa-layer-group"></i>
+          <span>管控线图层</span>
+          {showRedlines && <i className="fas fa-check ml-1"></i>}
+        </button>
+      </div>
+    </>
+  );
+};
 
 const MapPage: React.FC = () => {
   const { fetchBuildings, state } = useBuildings();
@@ -13,13 +66,30 @@ const MapPage: React.FC = () => {
   const [showDetail, setShowDetail] = useState(false);
   const [stats, setStats] = useState<StatsResult | null>(null);
   const [showStats, setShowStats] = useState(false);
-  const [drawMode, setDrawMode] = useState<'none' | 'rectangle' | 'polygon'>('none');
+  const [drawMode, setDrawMode] = useState<'none' | 'rectangle' | 'polygon' | 'analyze'>('none');
   const [polygonPoints, setPolygonPoints] = useState<[number, number][]>([]);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+  const [showAnalysis, setShowAnalysis] = useState(false);
+  const [selectionPolygon, setSelectionPolygon] = useState<Polygon | null>(null);
+  const [redlines, setRedlines] = useState<Redline[]>([]);
+  const [showRedlines, setShowRedlines] = useState(true);
 
   useEffect(() => {
     fetchBuildings();
+    loadRedlines();
   }, [fetchBuildings]);
+
+  const loadRedlines = async () => {
+    try {
+      const response = await redlineApi.getRedlines();
+      if (response.data.success) {
+        setRedlines(response.data.data);
+      }
+    } catch (error) {
+      console.error('加载管控线失败:', error);
+    }
+  };
 
   const handleMapClick = (lat: number, lng: number) => {
     console.log('Map clicked:', lat, lng);
@@ -39,7 +109,14 @@ const MapPage: React.FC = () => {
     setValidationErrors(errors);
   };
 
-  const handleDrawModeChange = (mode: 'none' | 'rectangle' | 'polygon') => {
+  const handleAnalysisResult = (result: AnalysisResult, polygon: Polygon) => {
+    setAnalysisResult(result);
+    setSelectionPolygon(polygon);
+    setShowAnalysis(true);
+    setPolygonPoints([]);
+  };
+
+  const handleDrawModeChange = (mode: 'none' | 'rectangle' | 'polygon' | 'analyze') => {
     setDrawMode(mode);
     if (mode === 'none') {
       setPolygonPoints([]);
@@ -47,8 +124,10 @@ const MapPage: React.FC = () => {
     }
   };
 
-  const handlePolygonPointsChange = (points: [number, number][]) => {
-    setPolygonPoints(points);
+  const handleCloseAnalysis = () => {
+    setShowAnalysis(false);
+    setAnalysisResult(null);
+    setSelectionPolygon(null);
   };
 
   return (
@@ -63,14 +142,27 @@ const MapPage: React.FC = () => {
           onBuildingClick={handleBuildingClick}
           onStatsResult={handleStatsResult}
           onValidationErrors={handleValidationErrors}
+          onAnalysisResult={handleAnalysisResult}
           drawMode={drawMode}
           onDrawModeChange={handleDrawModeChange}
           polygonPoints={polygonPoints}
-          onPolygonPointsChange={handlePolygonPointsChange}
+          onPolygonPointsChange={setPolygonPoints}
         >
-          <Legend />
+          <MapControls
+            showRedlines={showRedlines}
+            setShowRedlines={setShowRedlines}
+            redlines={redlines}
+            analysisResult={analysisResult}
+            selectionPolygon={selectionPolygon}
+          />
         </MapContainer>
       </div>
+
+      <RedlineAnalysisPanel
+        isOpen={showAnalysis}
+        onClose={handleCloseAnalysis}
+        result={analysisResult}
+      />
 
       {validationErrors.length > 0 && drawMode === 'polygon' && (
         <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-30 bg-red-500 text-white rounded-xl shadow-lg px-6 py-4 max-w-md">
