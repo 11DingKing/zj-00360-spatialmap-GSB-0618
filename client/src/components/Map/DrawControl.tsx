@@ -9,6 +9,7 @@ interface DrawControlProps {
   ) => void;
   polygonPoints?: [number, number][];
   onPolygonPointsChange?: (points: [number, number][]) => void;
+  onAnalyze?: () => void;
 }
 
 const DrawControl: React.FC<DrawControlProps> = ({
@@ -16,6 +17,7 @@ const DrawControl: React.FC<DrawControlProps> = ({
   onDrawModeChange,
   polygonPoints = [],
   onPolygonPointsChange,
+  onAnalyze,
 }) => {
   const handleRectangleClick = () => {
     if (drawMode === "rectangle") {
@@ -52,7 +54,11 @@ const DrawControl: React.FC<DrawControlProps> = ({
 
   const handleCompletePolygon = () => {
     if (polygonPoints.length >= 3) {
-      onDrawModeChange("none");
+      if (drawMode === "redline-analyze") {
+        onAnalyze?.();
+      } else {
+        onDrawModeChange("none");
+      }
     }
   };
 

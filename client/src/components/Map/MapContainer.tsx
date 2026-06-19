@@ -38,6 +38,7 @@ interface MapContainerProps {
   ) => void;
   polygonPoints?: [number, number][];
   onPolygonPointsChange?: (points: [number, number][]) => void;
+  onClearAll?: () => void;
   children?: React.ReactNode;
 }
 
@@ -62,6 +63,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
   onDrawModeChange,
   polygonPoints = [],
   onPolygonPointsChange,
+  onClearAll,
   children,
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
@@ -75,6 +77,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
   const tempPolygonRef = useRef<LeafletPolygon | null>(null);
   const analysisPolygonRef = useRef<LeafletPolygon | null>(null);
   const redlineLayersRef = useRef<L.Layer[]>([]);
+  const isAnalyzingRef = useRef(false);
 
   const drawModeRef = useRef(drawMode);
   const polygonPointsRef = useRef(polygonPoints);
@@ -85,6 +88,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
   const onValidationErrorsRef = useRef(onValidationErrors);
   const onRedlineAnalysisResultRef = useRef(onRedlineAnalysisResult);
   const onAnalysisStartRef = useRef(onAnalysisStart);
+  const onClearAllRef = useRef(onClearAll);
 
   useEffect(() => {
     drawModeRef.current = drawMode;
@@ -121,6 +125,10 @@ const MapContainer: React.FC<MapContainerProps> = ({
   useEffect(() => {
     onAnalysisStartRef.current = onAnalysisStart;
   }, [onAnalysisStart]);
+
+  useEffect(() => {
+    onClearAllRef.current = onClearAll;
+  }, [onClearAll]);
 
   const coordsToGeoJsonPolygon = useCallback(
     (points: [number, number][]): Polygon => {
@@ -190,20 +198,48 @@ const MapContainer: React.FC<MapContainerProps> = ({
     [],
   );
 
+  const clearTempLayers = useCallback(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (tempRectangleRef.current) {
+      map.removeLayer(tempRectangleRef.current);
+      tempRectangleRef.current = null;
+    }
+
+    polygonMarkersRef.current.forEach((m) => map.removeLayer(m));
+    polygonMarkersRef.current = [];
+
+    if (tempPolygonRef.current) {
+      map.removeLayer(tempPolygonRef.current);
+      tempPolygonRef.current = null;
+    }
+  }, []);
+
+  const clearAnalysisLayers = useCallback(() => {
+    const map = mapRef.current;
+    if (!map) return;
+
+    if (analysisPolygonRef.current) {
+      map.removeLayer(analysisPolygonRef.current);
+      analysisPolygonRef.current = null;
+    }
+  }, []);
+
   const handleRedlineAnalyze = useCallback(
     async (points: [number, number][]) => {
       if (points.length < 3) return;
 
-      const polygon = coordsToGeoJsonPolygon(points);
+      const geoPolygon = coordsToGeoJsonPolygon(points);
+      isAnalyzingRef.current = true;
 
       try {
         onAnalysisStartRef.current?.();
 
         const map = mapRef.current;
         if (map) {
-          if (analysisPolygonRef.current) {
-            map.removeLayer(analysisPolygonRef.current);
-          }
+          clearTempLayers();
+          clearAnalysisLayers();
           analysisPolygonRef.current = L.polygon(points, {
             color: "#F97316",
             weight: 3,
@@ -213,15 +249,19 @@ const MapContainer: React.FC<MapContainerProps> = ({
           }).addTo(map);
         }
 
-        const response = await redlineApi.analyzeArea(polygon);
+        onDrawModeChangeRef.current?.("none");
+
+        const response = await redlineApi.analyzeArea(geoPolygon);
         if (response.data.success) {
           onRedlineAnalysisResultRef.current?.(response.data.data);
         }
       } catch (error) {
         console.error("管控线分析失败:", error);
+      } finally {
+        isAnalyzingRef.current = false;
       }
     },
-    [coordsToGeoJsonPolygon],
+    [coordsToGeoJsonPolygon, clearTempLayers, clearAnalysisLayers],
   );
 
   const handlePolygonPointAdd = useCallback(
@@ -262,38 +302,10 @@ const MapContainer: React.FC<MapContainerProps> = ({
 
     if (currentMode === "redline-analyze") {
       handleRedlineAnalyze(currentPoints);
+    } else {
+      onDrawModeChangeRef.current?.("none");
     }
-
-    onDrawModeChangeRef.current?.("none");
   }, [handleRedlineAnalyze]);
-
-  const clearTempLayers = useCallback(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    if (tempRectangleRef.current) {
-      map.removeLayer(tempRectangleRef.current);
-      tempRectangleRef.current = null;
-    }
-
-    polygonMarkersRef.current.forEach((m) => map.removeLayer(m));
-    polygonMarkersRef.current = [];
-
-    if (tempPolygonRef.current) {
-      map.removeLayer(tempPolygonRef.current);
-      tempPolygonRef.current = null;
-    }
-  }, []);
-
-  const clearAnalysisLayers = useCallback(() => {
-    const map = mapRef.current;
-    if (!map) return;
-
-    if (analysisPolygonRef.current) {
-      map.removeLayer(analysisPolygonRef.current);
-      analysisPolygonRef.current = null;
-    }
-  }, []);
 
   const updatePolygonPreview = useCallback(
     (points: [number, number][], color: string = "#3B82F6") => {
@@ -480,11 +492,25 @@ const MapContainer: React.FC<MapContainerProps> = ({
     }
   }, [drawMode, polygonPoints, updatePolygonPreview, clearTempLayers]);
 
+  const prevDrawModeRef = useRef(drawMode);
   useEffect(() => {
-    if (drawMode === "none") {
+    if (
+      drawMode === "redline-analyze" &&
+      prevDrawModeRef.current !== "redline-analyze"
+    ) {
       clearAnalysisLayers();
     }
+    prevDrawModeRef.current = drawMode;
   }, [drawMode, clearAnalysisLayers]);
+
+  useEffect(() => {
+    if (polygonPoints.length === 0) {
+      clearTempLayers();
+      if (!isAnalyzingRef.current) {
+        clearAnalysisLayers();
+      }
+    }
+  }, [polygonPoints.length, clearTempLayers, clearAnalysisLayers]);
 
   return (
     <MapContext.Provider value={{ map: mapRef.current }}>
@@ -504,6 +530,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
           onDrawModeChange={onDrawModeChange || (() => {})}
           polygonPoints={polygonPoints}
           onPolygonPointsChange={onPolygonPointsChange || (() => {})}
+          onAnalyze={handleCompletePolygon}
         />
       </div>
     </MapContext.Provider>
