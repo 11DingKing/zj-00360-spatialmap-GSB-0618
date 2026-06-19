@@ -1,12 +1,15 @@
-import React from 'react';
-import type { Map } from 'leaflet';
+import React from "react";
+import type { Map } from "leaflet";
 
 interface DrawControlProps {
   map: Map | null;
-  drawMode: 'none' | 'rectangle' | 'polygon';
-  onDrawModeChange: (mode: 'none' | 'rectangle' | 'polygon') => void;
+  drawMode: "none" | "rectangle" | "polygon" | "redline-analyze";
+  onDrawModeChange: (
+    mode: "none" | "rectangle" | "polygon" | "redline-analyze",
+  ) => void;
   polygonPoints?: [number, number][];
   onPolygonPointsChange?: (points: [number, number][]) => void;
+  onAnalyze?: () => void;
 }
 
 const DrawControl: React.FC<DrawControlProps> = ({
@@ -14,41 +17,63 @@ const DrawControl: React.FC<DrawControlProps> = ({
   onDrawModeChange,
   polygonPoints = [],
   onPolygonPointsChange,
+  onAnalyze,
 }) => {
   const handleRectangleClick = () => {
-    if (drawMode === 'rectangle') {
-      onDrawModeChange('none');
+    if (drawMode === "rectangle") {
+      onDrawModeChange("none");
     } else {
-      onDrawModeChange('rectangle');
+      onDrawModeChange("rectangle");
     }
   };
 
   const handleAddBuildingClick = () => {
-    if (drawMode === 'polygon') {
-      onDrawModeChange('none');
+    if (drawMode === "polygon") {
+      onDrawModeChange("none");
       onPolygonPointsChange?.([]);
     } else {
-      onDrawModeChange('polygon');
+      onDrawModeChange("polygon");
+      onPolygonPointsChange?.([]);
+    }
+  };
+
+  const handleRedlineAnalyzeClick = () => {
+    if (drawMode === "redline-analyze") {
+      onDrawModeChange("none");
+      onPolygonPointsChange?.([]);
+    } else {
+      onDrawModeChange("redline-analyze");
       onPolygonPointsChange?.([]);
     }
   };
 
   const handleClearClick = () => {
-    onDrawModeChange('none');
+    onDrawModeChange("none");
     onPolygonPointsChange?.([]);
   };
 
   const handleCompletePolygon = () => {
     if (polygonPoints.length >= 3) {
-      onDrawModeChange('none');
+      if (drawMode === "redline-analyze") {
+        onAnalyze?.();
+      } else {
+        onDrawModeChange("none");
+      }
     }
   };
 
   const getButtonClass = (active: boolean) => {
     if (active) {
-      return 'bg-blue-500 text-white shadow-lg';
+      return "bg-blue-500 text-white shadow-lg";
     }
-    return 'bg-white text-gray-700 hover:bg-gray-50';
+    return "bg-white text-gray-700 hover:bg-gray-50";
+  };
+
+  const getAnalyzeButtonClass = (active: boolean) => {
+    if (active) {
+      return "bg-orange-500 text-white shadow-lg";
+    }
+    return "bg-white text-orange-600 hover:bg-orange-50";
   };
 
   return (
@@ -56,7 +81,7 @@ const DrawControl: React.FC<DrawControlProps> = ({
       <div className="bg-white rounded-xl shadow-lg p-2 flex flex-col space-y-1">
         <button
           onClick={handleRectangleClick}
-          className={`flex items-center space-x-2 px-4 py-2.5 rounded-lg transition-all ${getButtonClass(drawMode === 'rectangle')}`}
+          className={`flex items-center space-x-2 px-4 py-2.5 rounded-lg transition-all ${getButtonClass(drawMode === "rectangle")}`}
           title="框选统计"
         >
           <i className="fas fa-vector-square"></i>
@@ -64,8 +89,17 @@ const DrawControl: React.FC<DrawControlProps> = ({
         </button>
 
         <button
+          onClick={handleRedlineAnalyzeClick}
+          className={`flex items-center space-x-2 px-4 py-2.5 rounded-lg transition-all ${getAnalyzeButtonClass(drawMode === "redline-analyze")}`}
+          title="管控线冲突体检"
+        >
+          <i className="fas fa-exclamation-triangle"></i>
+          <span className="text-sm font-medium">冲突体检</span>
+        </button>
+
+        <button
           onClick={handleAddBuildingClick}
-          className={`flex items-center space-x-2 px-4 py-2.5 rounded-lg transition-all ${getButtonClass(drawMode === 'polygon')}`}
+          className={`flex items-center space-x-2 px-4 py-2.5 rounded-lg transition-all ${getButtonClass(drawMode === "polygon")}`}
           title="新增房屋"
         >
           <i className="fas fa-plus-circle"></i>
@@ -84,7 +118,7 @@ const DrawControl: React.FC<DrawControlProps> = ({
         </button>
       </div>
 
-      {drawMode === 'rectangle' && (
+      {drawMode === "rectangle" && (
         <div className="bg-blue-500 text-white rounded-xl shadow-lg px-4 py-3 text-sm">
           <div className="flex items-center space-x-2">
             <i className="fas fa-info-circle"></i>
@@ -93,7 +127,37 @@ const DrawControl: React.FC<DrawControlProps> = ({
         </div>
       )}
 
-      {drawMode === 'polygon' && (
+      {drawMode === "redline-analyze" && (
+        <div className="bg-orange-500 text-white rounded-xl shadow-lg px-4 py-3 text-sm">
+          <div className="space-y-2">
+            <div className="flex items-center space-x-2">
+              <i className="fas fa-info-circle"></i>
+              <span>点击地图绘制分析区域多边形</span>
+            </div>
+            <div className="flex items-center space-x-2 text-xs opacity-90">
+              <i className="fas fa-circle text-xs"></i>
+              <span>已添加 {polygonPoints.length} 个顶点</span>
+            </div>
+            {polygonPoints.length < 3 && (
+              <div className="flex items-center space-x-2 text-xs opacity-90">
+                <i className="fas fa-exclamation-triangle text-xs"></i>
+                <span>至少需要 3 个顶点</span>
+              </div>
+            )}
+            {polygonPoints.length >= 3 && (
+              <button
+                onClick={handleCompletePolygon}
+                className="w-full mt-2 py-2 bg-white text-orange-600 rounded-lg text-sm font-medium hover:bg-orange-50 transition-colors"
+              >
+                <i className="fas fa-search mr-2"></i>
+                开始分析
+              </button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {drawMode === "polygon" && (
         <div className="bg-green-500 text-white rounded-xl shadow-lg px-4 py-3 text-sm">
           <div className="space-y-2">
             <div className="flex items-center space-x-2">
