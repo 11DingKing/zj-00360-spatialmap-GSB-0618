@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import MapContainer from '../components/Map/MapContainer';
 import Legend from '../components/Map/Legend';
 import FilterPanel from '../components/FilterPanel';
 import BuildingDetail from '../components/BuildingDetail';
 import StatsModal from '../components/StatsModal';
+import ConflictAnalysisPanel from '../components/ConflictAnalysisPanel';
 import { useBuildings } from '../context/BuildingContext';
-import type { BuildingWithRelations, StatsResult, ValidationError } from '../types';
+import { analysisApi } from '../services/api';
+import type { BuildingWithRelations, StatsResult, ValidationError, AnalysisResult } from '../types';
 
 const MapPage: React.FC = () => {
   const { fetchBuildings, state } = useBuildings();
@@ -13,9 +15,11 @@ const MapPage: React.FC = () => {
   const [showDetail, setShowDetail] = useState(false);
   const [stats, setStats] = useState<StatsResult | null>(null);
   const [showStats, setShowStats] = useState(false);
-  const [drawMode, setDrawMode] = useState<'none' | 'rectangle' | 'polygon'>('none');
+  const [drawMode, setDrawMode] = useState<'none' | 'rectangle' | 'polygon' | 'analysis'>('none');
   const [polygonPoints, setPolygonPoints] = useState<[number, number][]>([]);
   const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
+  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
 
   useEffect(() => {
     fetchBuildings();
@@ -39,16 +43,46 @@ const MapPage: React.FC = () => {
     setValidationErrors(errors);
   };
 
-  const handleDrawModeChange = (mode: 'none' | 'rectangle' | 'polygon') => {
+  const handleDrawModeChange = (mode: 'none' | 'rectangle' | 'polygon' | 'analysis') => {
     setDrawMode(mode);
     if (mode === 'none') {
       setPolygonPoints([]);
       setValidationErrors([]);
     }
+    if (mode !== 'analysis') {
+      setAnalysisResult(null);
+    }
   };
 
   const handlePolygonPointsChange = (points: [number, number][]) => {
     setPolygonPoints(points);
+  };
+
+  const handleAnalysisPolygonDrawn = useCallback(async (points: [number, number][]) => {
+    if (points.length < 3) return;
+
+    setAnalysisLoading(true);
+    setPolygonPoints([]);
+
+    try {
+      const response = await analysisApi.conflictCheck({ points });
+      if (response.data.success) {
+        setAnalysisResult(response.data.data);
+      }
+    } catch (error) {
+      console.error('冲突体检失败:', error);
+    } finally {
+      setAnalysisLoading(false);
+    }
+  }, []);
+
+  const handleCloseAnalysis = () => {
+    setAnalysisResult(null);
+  };
+
+  const handleAnalysisBuildingClick = (building: BuildingWithRelations) => {
+    setSelectedBuilding(building);
+    setShowDetail(true);
   };
 
   return (
@@ -63,6 +97,7 @@ const MapPage: React.FC = () => {
           onBuildingClick={handleBuildingClick}
           onStatsResult={handleStatsResult}
           onValidationErrors={handleValidationErrors}
+          onAnalysisPolygonDrawn={handleAnalysisPolygonDrawn}
           drawMode={drawMode}
           onDrawModeChange={handleDrawModeChange}
           polygonPoints={polygonPoints}
@@ -87,6 +122,13 @@ const MapPage: React.FC = () => {
           </div>
         </div>
       )}
+
+      <ConflictAnalysisPanel
+        result={analysisResult}
+        loading={analysisLoading}
+        onClose={handleCloseAnalysis}
+        onBuildingClick={handleAnalysisBuildingClick}
+      />
 
       <BuildingDetail
         isOpen={showDetail}

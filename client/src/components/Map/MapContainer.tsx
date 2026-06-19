@@ -1,18 +1,20 @@
-import React, { useRef, useEffect, useCallback, createContext, useContext } from 'react';
+import React, { useRef, useEffect, useCallback, createContext, useContext, useState } from 'react';
 import L, { type Map, type LatLng, type Rectangle, type Polygon, type CircleMarker, type TileLayer } from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import BuildingMarkers from './BuildingMarkers';
 import DrawControl from './DrawControl';
-import { buildingApi } from '../../services/api';
-import type { BuildingWithRelations, StatsResult, ValidationError } from '../../types';
+import RedlineLayer from './RedlineLayer';
+import { buildingApi, redlineApi } from '../../services/api';
+import type { BuildingWithRelations, StatsResult, ValidationError, Redline } from '../../types';
 
 interface MapContainerProps {
   onMapClick?: (lat: number, lng: number) => void;
   onBuildingClick?: (building: BuildingWithRelations) => void;
   onStatsResult?: (stats: StatsResult) => void;
   onValidationErrors?: (errors: ValidationError[]) => void;
-  drawMode?: 'none' | 'rectangle' | 'polygon';
-  onDrawModeChange?: (mode: 'none' | 'rectangle' | 'polygon') => void;
+  onAnalysisPolygonDrawn?: (points: [number, number][]) => void;
+  drawMode?: 'none' | 'rectangle' | 'polygon' | 'analysis';
+  onDrawModeChange?: (mode: 'none' | 'rectangle' | 'polygon' | 'analysis') => void;
   polygonPoints?: [number, number][];
   onPolygonPointsChange?: (points: [number, number][]) => void;
   children?: React.ReactNode;
@@ -33,6 +35,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
   onBuildingClick,
   onStatsResult,
   onValidationErrors,
+  onAnalysisPolygonDrawn,
   drawMode = 'none',
   onDrawModeChange,
   polygonPoints = [],
@@ -49,6 +52,9 @@ const MapContainer: React.FC<MapContainerProps> = ({
   const polygonMarkersRef = useRef<CircleMarker[]>([]);
   const tempPolygonRef = useRef<Polygon | null>(null);
 
+  const [redlines, setRedlines] = useState<Redline[]>([]);
+  const [showRedlines, setShowRedlines] = useState(true);
+
   const drawModeRef = useRef(drawMode);
   const polygonPointsRef = useRef(polygonPoints);
   const onMapClickRef = useRef(onMapClick);
@@ -56,6 +62,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
   const onDrawModeChangeRef = useRef(onDrawModeChange);
   const onPolygonPointsChangeRef = useRef(onPolygonPointsChange);
   const onValidationErrorsRef = useRef(onValidationErrors);
+  const onAnalysisPolygonDrawnRef = useRef(onAnalysisPolygonDrawn);
 
   useEffect(() => {
     drawModeRef.current = drawMode;
@@ -84,6 +91,24 @@ const MapContainer: React.FC<MapContainerProps> = ({
   useEffect(() => {
     onValidationErrorsRef.current = onValidationErrors;
   }, [onValidationErrors]);
+
+  useEffect(() => {
+    onAnalysisPolygonDrawnRef.current = onAnalysisPolygonDrawn;
+  }, [onAnalysisPolygonDrawn]);
+
+  useEffect(() => {
+    const loadRedlines = async () => {
+      try {
+        const response = await redlineApi.getRedlines();
+        if (response.data.success) {
+          setRedlines(response.data.data);
+        }
+      } catch (error) {
+        console.error('加载管控线失败:', error);
+      }
+    };
+    loadRedlines();
+  }, []);
 
   const handleDrawComplete = useCallback(async (bounds: { minLat: number; maxLat: number; minLng: number; maxLng: number }) => {
     try {
@@ -131,8 +156,10 @@ const MapContainer: React.FC<MapContainerProps> = ({
     const currentPoints = polygonPointsRef.current;
     const newPoints = [...currentPoints, [lat, lng] as [number, number]];
     onPolygonPointsChangeRef.current?.(newPoints);
+
+    const mode = drawModeRef.current;
     
-    if (newPoints.length >= 3) {
+    if (mode === 'polygon' && newPoints.length >= 3) {
       try {
         const response = await buildingApi.validateBuilding({
           location: {
@@ -153,6 +180,15 @@ const MapContainer: React.FC<MapContainerProps> = ({
         console.error('验证建筑失败:', error);
       }
     }
+  }, []);
+
+  const handlePolygonComplete = useCallback((points: [number, number][]) => {
+    const mode = drawModeRef.current;
+
+    if (mode === 'analysis') {
+      onAnalysisPolygonDrawnRef.current?.(points);
+    }
+    onDrawModeChangeRef.current?.('none');
   }, []);
 
   const clearTempLayers = useCallback(() => {
@@ -185,11 +221,14 @@ const MapContainer: React.FC<MapContainerProps> = ({
       tempPolygonRef.current = null;
     }
 
+    const mode = drawModeRef.current;
+    const isAnalysis = mode === 'analysis';
+
     if (points.length > 0) {
       points.forEach((point, index) => {
         const marker = L.circleMarker([point[0], point[1]], {
           radius: 6,
-          fillColor: '#EF4444',
+          fillColor: isAnalysis ? '#EF4444' : '#22C55E',
           color: '#FFFFFF',
           weight: 2,
           fillOpacity: 1,
@@ -201,9 +240,9 @@ const MapContainer: React.FC<MapContainerProps> = ({
 
     if (points.length >= 3) {
       tempPolygonRef.current = L.polygon(points, {
-        color: '#3B82F6',
+        color: isAnalysis ? '#EF4444' : '#3B82F6',
         weight: 2,
-        fillColor: '#3B82F6',
+        fillColor: isAnalysis ? '#EF4444' : '#3B82F6',
         fillOpacity: 0.2,
       }).addTo(map);
     }
@@ -229,7 +268,7 @@ const MapContainer: React.FC<MapContainerProps> = ({
       const { lat, lng } = e.latlng;
       const currentDrawMode = drawModeRef.current;
       
-      if (currentDrawMode === 'polygon') {
+      if (currentDrawMode === 'polygon' || currentDrawMode === 'analysis') {
         handlePolygonPointAdd(lat, lng);
       } else if (currentDrawMode === 'none' && onMapClickRef.current) {
         onMapClickRef.current(lat, lng);
@@ -307,12 +346,16 @@ const MapContainer: React.FC<MapContainerProps> = ({
   }, [drawMode]);
 
   useEffect(() => {
-    if (drawMode === 'polygon') {
+    if (drawMode === 'polygon' || drawMode === 'analysis') {
       updatePolygonPreview(polygonPoints);
     } else {
       clearTempLayers();
     }
   }, [drawMode, polygonPoints, updatePolygonPreview, clearTempLayers]);
+
+  const handleToggleRedlines = () => {
+    setShowRedlines(prev => !prev);
+  };
 
   return (
     <MapContext.Provider value={{ map: mapRef.current }}>
@@ -324,6 +367,12 @@ const MapContainer: React.FC<MapContainerProps> = ({
           onBuildingClick={onBuildingClick}
         />
         
+        <RedlineLayer
+          map={mapRef.current}
+          redlines={redlines}
+          showRedlines={showRedlines}
+        />
+        
         {children}
         
         <DrawControl
@@ -332,6 +381,9 @@ const MapContainer: React.FC<MapContainerProps> = ({
           onDrawModeChange={onDrawModeChange || (() => {})}
           polygonPoints={polygonPoints}
           onPolygonPointsChange={onPolygonPointsChange || (() => {})}
+          onPolygonComplete={handlePolygonComplete}
+          showRedlines={showRedlines}
+          onToggleRedlines={handleToggleRedlines}
         />
       </div>
     </MapContext.Provider>
