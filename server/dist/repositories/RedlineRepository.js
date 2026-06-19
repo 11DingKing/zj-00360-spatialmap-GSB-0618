@@ -62,19 +62,15 @@ class RedlineRepository {
         return row ? this.mapRowToRedline(row) : null;
     }
     findWithinBounds(minLng, maxLng, minLat, maxLat) {
-        const rows = this.db.prepare(`
-      SELECT r.* FROM redlines r
-      WHERE EXISTS (
-        SELECT 1 FROM redline_rtree rt
-        WHERE rt.id = r.id
-          AND rt.min_x <= ?
-          AND rt.max_x >= ?
-          AND rt.min_y <= ?
-          AND rt.max_y >= ?
-      )
-      ORDER BY r.name
-    `).all(maxLng, minLng, maxLat, minLat);
-        return rows.map(row => this.mapRowToRedline(row));
+        const allRedlines = this.findAll();
+        const queryBbox = [minLng, minLat, maxLng, maxLat];
+        return allRedlines.filter(redline => {
+            const rBbox = turf.bbox(redline.boundary);
+            return !(rBbox[2] < queryBbox[0] ||
+                rBbox[0] > queryBbox[2] ||
+                rBbox[3] < queryBbox[1] ||
+                rBbox[1] > queryBbox[3]);
+        });
     }
     create(data) {
         const boundary = JSON.stringify(data.boundary);
