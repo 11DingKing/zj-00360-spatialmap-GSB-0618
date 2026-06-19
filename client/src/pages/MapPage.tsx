@@ -1,28 +1,45 @@
-import React, { useState, useEffect } from 'react';
-import MapContainer from '../components/Map/MapContainer';
-import Legend from '../components/Map/Legend';
-import FilterPanel from '../components/FilterPanel';
-import BuildingDetail from '../components/BuildingDetail';
-import StatsModal from '../components/StatsModal';
-import { useBuildings } from '../context/BuildingContext';
-import type { BuildingWithRelations, StatsResult, ValidationError } from '../types';
+import React, { useState, useEffect, useCallback } from "react";
+import MapContainer from "../components/Map/MapContainer";
+import Legend from "../components/Map/Legend";
+import FilterPanel from "../components/FilterPanel";
+import BuildingDetail from "../components/BuildingDetail";
+import StatsModal from "../components/StatsModal";
+import AnalysisPanel from "../components/AnalysisPanel";
+import { useBuildings } from "../context/BuildingContext";
+import { redlineApi } from "../services/api";
+import type {
+  AreaAnalysisResult,
+  BuildingWithRelations,
+  Polygon,
+  StatsResult,
+  ValidationError,
+} from "../types";
+
+type DrawMode = "none" | "rectangle" | "polygon" | "analysis";
 
 const MapPage: React.FC = () => {
   const { fetchBuildings, state } = useBuildings();
-  const [selectedBuilding, setSelectedBuilding] = useState<BuildingWithRelations | null>(null);
+  const [selectedBuilding, setSelectedBuilding] =
+    useState<BuildingWithRelations | null>(null);
   const [showDetail, setShowDetail] = useState(false);
   const [stats, setStats] = useState<StatsResult | null>(null);
   const [showStats, setShowStats] = useState(false);
-  const [drawMode, setDrawMode] = useState<'none' | 'rectangle' | 'polygon'>('none');
+  const [drawMode, setDrawMode] = useState<DrawMode>("none");
   const [polygonPoints, setPolygonPoints] = useState<[number, number][]>([]);
-  const [validationErrors, setValidationErrors] = useState<ValidationError[]>([]);
+  const [validationErrors, setValidationErrors] = useState<ValidationError[]>(
+    [],
+  );
+  const [analysisResult, setAnalysisResult] =
+    useState<AreaAnalysisResult | null>(null);
+  const [showAnalysis, setShowAnalysis] = useState(false);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
 
   useEffect(() => {
     fetchBuildings();
   }, [fetchBuildings]);
 
   const handleMapClick = (lat: number, lng: number) => {
-    console.log('Map clicked:', lat, lng);
+    console.log("Map clicked:", lat, lng);
   };
 
   const handleBuildingClick = (building: BuildingWithRelations) => {
@@ -39,9 +56,9 @@ const MapPage: React.FC = () => {
     setValidationErrors(errors);
   };
 
-  const handleDrawModeChange = (mode: 'none' | 'rectangle' | 'polygon') => {
+  const handleDrawModeChange = (mode: DrawMode) => {
     setDrawMode(mode);
-    if (mode === 'none') {
+    if (mode === "none") {
       setPolygonPoints([]);
       setValidationErrors([]);
     }
@@ -49,6 +66,42 @@ const MapPage: React.FC = () => {
 
   const handlePolygonPointsChange = (points: [number, number][]) => {
     setPolygonPoints(points);
+  };
+
+  const handleAnalysisComplete = useCallback(
+    async (latLngPoints: [number, number][]) => {
+      if (latLngPoints.length < 3) return;
+
+      const ring = latLngPoints.map(([la, lo]) => [lo, la] as [number, number]);
+      const closedRing = [...ring, ring[0]];
+      const area: Polygon = {
+        type: "Polygon",
+        coordinates: [closedRing],
+      };
+
+      setAnalysisLoading(true);
+      setShowAnalysis(true);
+      setAnalysisResult(null);
+
+      try {
+        const response = await redlineApi.analyzeArea(area);
+        if (response.data.success) {
+          setAnalysisResult(response.data.data);
+        }
+      } catch (err) {
+        console.error("管控线冲突分析失败:", err);
+      } finally {
+        setAnalysisLoading(false);
+        setDrawMode("none");
+        setPolygonPoints([]);
+      }
+    },
+    [],
+  );
+
+  const handleCloseAnalysis = () => {
+    setShowAnalysis(false);
+    setAnalysisResult(null);
   };
 
   return (
@@ -63,6 +116,7 @@ const MapPage: React.FC = () => {
           onBuildingClick={handleBuildingClick}
           onStatsResult={handleStatsResult}
           onValidationErrors={handleValidationErrors}
+          onAnalysisComplete={handleAnalysisComplete}
           drawMode={drawMode}
           onDrawModeChange={handleDrawModeChange}
           polygonPoints={polygonPoints}
@@ -72,7 +126,7 @@ const MapPage: React.FC = () => {
         </MapContainer>
       </div>
 
-      {validationErrors.length > 0 && drawMode === 'polygon' && (
+      {validationErrors.length > 0 && drawMode === "polygon" && (
         <div className="absolute top-4 left-1/2 transform -translate-x-1/2 z-30 bg-red-500 text-white rounded-xl shadow-lg px-6 py-4 max-w-md">
           <div className="flex items-start space-x-3">
             <i className="fas fa-exclamation-circle text-lg mt-0.5"></i>
@@ -98,6 +152,13 @@ const MapPage: React.FC = () => {
         isOpen={showStats}
         onClose={() => setShowStats(false)}
         stats={stats}
+      />
+
+      <AnalysisPanel
+        isOpen={showAnalysis}
+        loading={analysisLoading}
+        result={analysisResult}
+        onClose={handleCloseAnalysis}
       />
 
       {state.loading && (
